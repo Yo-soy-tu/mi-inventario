@@ -1,0 +1,53 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from io import BytesIO
+
+st.set_page_config(page_title="Gestor Pro", layout="wide")
+
+# Inicialización de datos
+if 'db' not in st.session_state:
+    st.session_state.db = pd.DataFrame(columns=["Producto", "Categoría", "Stock", "Precio"])
+
+st.title("📦 Panel de Control de Inventario")
+
+# --- BARRA LATERAL ---
+with st.sidebar:
+    st.header("➕ Nuevo Producto")
+    with st.form("add_form"):
+        nom = st.text_input("Nombre")
+        cat = st.selectbox("Categoría", ["Electrónica", "Ropa", "Alimentos", "Otros"])
+        cant = st.number_input("Cantidad", min_value=0)
+        pre = st.number_input("Precio (€)", min_value=0.0)
+        if st.form_submit_button("Guardar"):
+            nuevo = pd.DataFrame([[nom, cat, cant, pre]], columns=st.session_state.db.columns)
+            st.session_state.db = pd.concat([st.session_state.db, nuevo], ignore_index=True)
+
+# --- DASHBOARD ---
+col1, col2, col3 = st.columns(3)
+total_stock = st.session_state.db["Stock"].sum()
+valor_total = (st.session_state.db["Stock"] * st.session_state.db["Precio"]).sum()
+
+col1.metric("Unidades Totales", int(total_stock))
+col2.metric("Valor Inventario", f"{valor_total:,.2f} €")
+col3.warning(f"Alertas: {len(st.session_state.db[st.session_state.db['Stock'] < 5])}")
+
+# --- TABLA Y GRÁFICA ---
+st.subheader("📋 Listado de Productos")
+st.dataframe(st.session_state.db, use_container_width=True)
+
+if not st.session_state.db.empty:
+    fig = px.bar(st.session_state.db, x="Producto", y="Stock", color="Categoría", title="Niveles de Stock")
+    st.plotly_chart(fig)
+
+    # BOTÓN EXCEL
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        st.session_state.db.to_excel(writer, index=False, sheet_name='Inventario')
+    
+    st.download_button(
+        label="📥 Descargar Reporte Excel",
+        data=output.getvalue(),
+        file_name="inventario_completo.xlsx",
+        mime="application/vnd.ms-excel"
+    )
